@@ -10,6 +10,7 @@ fastparquet = "*"
 s3fs = "*"
 jinja2 = "*"
 scipy = "*"
+ipykernel = "*"
 
 [dev-packages]
 ipykernel = "*"
