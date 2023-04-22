@@ -9,6 +9,7 @@ seaborn = "*"
 fastparquet = "*"
 s3fs = "*"
 jinja2 = "*"
+scipy = "*"
 
 [dev-packages]
 ipykernel = "*"
