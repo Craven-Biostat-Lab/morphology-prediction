@@ -6,6 +6,9 @@ name = "pypi"
 [packages]
 pandas = "*"
 openpyxl = "*"
+torch = "*"
+torch-geometric = "*"
+stringdb-alias = "*"
 
 [dev-packages]
 ipykernel = "*"

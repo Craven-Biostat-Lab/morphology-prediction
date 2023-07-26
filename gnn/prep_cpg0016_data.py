@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch_geometric import Data
+from stringdb_alias import HGNCMapper
 
 def prep_edges(stringdb_txt):
 
@@ -70,11 +71,19 @@ def broadcast_feature_matrix(protein_lookup, feature_df):
     result[protein_lookup[feature_df.index], :] = feature_df
 
 
+def get_protein_labels(gene_labels_csv, gene_col, label_col, mapper):
+
+    labels_df = pd.read_csv(gene_labels_csv)
+
+    # Use our ID converter
+    return pd.DataFrame({'label': labels_df[label_col]}, index=mapper.get_string_ids(labels_df[gene_col]))
+
+
 def build_node_classification_set(protein_lookup, edge_index, edge_attr, labels, *feature_dfs):
     
     n_proteins = len(protein_lookup)
 
-    y = np.zeros([n_proteins, 1]) # Need to figure out correct dimensionality for out labeling
+    y = np.zeros([n_proteins, 1], dtype=int)
 
     x = np.concatenate(
         [
@@ -84,16 +93,11 @@ def build_node_classification_set(protein_lookup, edge_index, edge_attr, labels,
         axis=1
     )
 
-    train_mask = None
-    test_mask = None
-    val_mask = None
+    # This object won't have the train/validation/test masks. Those can be attached later.
 
     return Data(
         x=x,
         edge_index=edge_index,
         edge_attr=edge_attr,
-        y=y,
-        train_mask=train_mask,
-        val_mask=val_mask,
-        test_mask=test_mask
+        y=y
     )
