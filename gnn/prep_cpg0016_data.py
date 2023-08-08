@@ -101,3 +101,25 @@ def build_node_classification_set(protein_lookup, edge_index, edge_attr, labels,
         edge_attr=edge_attr,
         y=y
     )
+
+def prep_data(stringdb_txt, mapfile_xlsx):
+    """Main function. Prepares our data for the GNN. Returns a Data object."""
+
+    # Get GO features
+    go_feature_matrix = get_protein_go_map(mapfile_xlsx)
+
+    # Get Network
+    protein_lookup, edge_index, edge_attr = prep_edges(stringdb_txt)
+
+    # Populate data object
+    data = build_node_classification_set(protein_lookup, edge_index, edge_attr, labels, go_feature_matrix)
+
+    # Set up train/test/validation split
+    # TODO
+
+    return data
+
+if __name__ == "__main__":
+    # TODO: Make these arguments
+
+    prep_data()
