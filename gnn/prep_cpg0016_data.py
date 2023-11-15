@@ -1,6 +1,7 @@
 """ Prepare CPG0016 data for GNN training/testing
 """
 
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
@@ -118,10 +119,10 @@ def build_node_classification_set(protein_lookup, edge_index, edge_attr, labels,
     # This object won't have the train/validation/test masks. Those can be attached later.
 
     return Data(
-        x=torch.tensor(x),
+        x=torch.tensor(x, dtype=torch.float),
         edge_index=edge_index,
         edge_attr=edge_attr,
-        y=torch.tensor(y)
+        y=torch.tensor(y, dtype=torch.float)
     )
 
 def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, string_alias_file, generator):
@@ -175,17 +176,25 @@ def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, str
 
     return data
 
-def test_prep():
-    return prep_data(
+def main():
+
+    output_file = Path('data/cpg0016_v1.pt')
+    assert not output_file.exists(), f"Won't overwrite existing {output_file}"
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    data = prep_data(
         stringdb_txt='../../../data/STRING/9606.protein.links.detailed.v11.5.txt.gz',
         mapfile_xlsx='../data/GO/HUMAN_9606_idmapping.xlsx',
         gene_labels_csv='../data/cpg0016/version_2023-06-14/gene_labels.csv',
         string_info_file='../../../data/STRING/9606.protein.info.v11.5.txt.gz',
         string_alias_file='../../../data/STRING/9606.protein.aliases.v11.5.txt.gz',
-        generator=torch.Generator()
+        generator=torch.Generator().manual_seed(20231115)
     )
 
-if __name__ == "__main__":
-    # TODO: Make these arguments
+    torch.save(data, output_file)
 
-    data = test_prep()
+if __name__ == "__main__":
+    # TODO: Make CLI arguments
+
+    main()
