@@ -1,5 +1,6 @@
-# Data
+# Data and other generated files
 data
+gnn/models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
