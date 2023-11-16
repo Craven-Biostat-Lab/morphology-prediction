@@ -100,6 +100,9 @@ def training_loop(data, model, epochs=200):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1, weight_decay=5e-4)
 
+    # Convert our column vector of 1 and -1 to 1, 0
+    y = (data.y + 1) * 0.5
+
     model.train()
     loss_curves = np.zeros((epochs, 2), dtype=float)
     for epoch in range(epochs):
@@ -107,13 +110,13 @@ def training_loop(data, model, epochs=200):
         optimizer.zero_grad()
         # Forward pass
         out = model(data)
-        training_loss = func.nll_loss(out[data.train_mask], data.y[data.train_mask])
-        test_loss = func.nll_loss(out[data.test_mask], data.y[data.test_mask])
+        training_loss = func.cross_entropy(out[data.train_mask, 0], y[data.train_mask, 0])
+        test_loss = func.cross_entropy(out[data.test_mask, 0], y[data.test_mask, 0])
         # Record loss curves
-        loss_curves[epoch, 0] = training_loss.numpy()
-        loss_curves[epoch, 1] = test_loss.numpy()
+        loss_curves[epoch, 0] = training_loss.numpy(force=True)
+        loss_curves[epoch, 1] = test_loss.numpy(force=True)
         if epoch % 10 == 9:
-            print(f"epoch {epoch}, train, test losses {loss_curves['epoch']}")
+            print(f"epoch {epoch}, train, test losses {loss_curves[epoch]}")
         # Backprop
         training_loss.backward()
         # Step
@@ -137,9 +140,11 @@ def main(args):
     model, loss_curves = training_loop(data, model)
 
     # Save loss curves
+    args.loss_curve_csv.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(loss_curves, columns=['training', 'testing']).to_csv(args.loss_curve_csv)
 
     # Save model
+    args.model_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model, args.model_path)
 
 if __name__ == '__main__':
