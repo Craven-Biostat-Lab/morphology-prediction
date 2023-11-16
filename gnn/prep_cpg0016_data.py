@@ -27,7 +27,7 @@ def prep_edges(stringdb_txt):
 
     # Get edge list and edge features
     edge_index = torch.tensor(
-        np.concatenate(
+        np.stack(
             (
                 protein_lookup[string_df.protein1].to_numpy(),
                 protein_lookup[string_df.protein2].to_numpy()
@@ -156,7 +156,7 @@ def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, str
     # Set up train/test/validation split
     split_lengths = [0.3, 0.3, 0.4]
     pos_idx = np.nonzero(data.y == 1)
-    neg_idx = np.nonzero(data.y == 0)
+    neg_idx = np.nonzero(data.y == -1)
     pos_test, pos_val, pos_train = torch.utils.data.random_split(pos_idx, split_lengths, generator)
     neg_test, neg_val, neg_train = torch.utils.data.random_split(neg_idx, split_lengths, generator)
 
