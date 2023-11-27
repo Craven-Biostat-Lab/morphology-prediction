@@ -65,7 +65,7 @@ class NNConvNet(torch.nn.Module):
         )
 
         # The NNConv layers
-        self.nnconv = [
+        self.nnconv = torch.nn.ModuleList(
             NNConv(
                 in_channels=channel_width,
                 out_channels=channel_width,
@@ -75,7 +75,7 @@ class NNConvNet(torch.nn.Module):
                 bias=True
             )
             for _ in range(gnn_depth)
-        ]
+        )
 
         # Last layer: transform to result dimension.
         self.lin_out = torch.nn.Linear(channel_width, out_features, bias=True)
@@ -95,8 +95,8 @@ class NNConvNet(torch.nn.Module):
 
 def training_loop(data, model, epochs=200):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data.to(device)
-    model.to(device)
+    data = data.to(device)
+    model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1, weight_decay=5e-4)
 
