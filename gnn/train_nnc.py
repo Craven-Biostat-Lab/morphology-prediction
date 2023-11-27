@@ -43,9 +43,9 @@ class NNConvNet(torch.nn.Module):
         in_features,
         edge_features,
         channel_width,
-        #encoder_depth=1,
+        encoder_depth=0,
         gnn_depth=1,
-        #decoder_depth=1,
+        decoder_depth=0,
         out_features=1,
         dropout_rate=0.5
     ):
@@ -56,6 +56,12 @@ class NNConvNet(torch.nn.Module):
 
         # First layer: input x to channel width
         self.lin_in = torch.nn.Linear(in_features, channel_width, bias=True)
+
+        # Encoder layers
+        self.encoder = torch.nn.ModuleList(
+            torch.nn.Linear(channel_width, channel_width, bias=True)
+            for _ in range(encoder_depth)
+        )
 
         # Middle layers: NNConv layers
         # NN for NNConv is shared across layers
@@ -77,19 +83,34 @@ class NNConvNet(torch.nn.Module):
             for _ in range(gnn_depth)
         )
 
+        # Decoder layers
+        self.decoder = torch.nn.ModuleList(
+            torch.nn.Linear(channel_width, channel_width, bias=True)
+            for _ in range(decoder_depth)
+        )
+
         # Last layer: transform to result dimension.
         self.lin_out = torch.nn.Linear(channel_width, out_features, bias=True)
     
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
 
-        h = func.leaky_relu(self.lin_in(x))
-        h = func.dropout(h, p=self.dropout_rate)
+        h = self.lin_in(x)
 
-        for nnc_layer in self.nnconv:
-            h = nnc_layer(h, edge_index, edge_attr)
+        for encoder_layer in self.encoder:
             h = func.leaky_relu(h)
             h = func.dropout(h, p=self.dropout_rate)
+            h = encoder_layer(h)
+
+        for nnc_layer in self.nnconv:
+            h = func.leaky_relu(h)
+            h = func.dropout(h, p=self.dropout_rate)
+            h = nnc_layer(h, edge_index, edge_attr)
+
+        for decoder_layer in self.decoder:
+            h = func.leaky_relu(h)
+            h = func.dropout(h, p=self.dropout_rate)
+            h = decoder_layer(h)
         
         return self.lin_out(h)
 
