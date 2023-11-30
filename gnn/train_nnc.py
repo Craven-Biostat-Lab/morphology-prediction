@@ -1,6 +1,7 @@
 """Train an NNConv net given morphology data."""
 
 from pathlib import Path
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,8 @@ import torch
 import torch.nn.functional as func
 
 from torch_geometric.nn import NNConv
+
+from torcheval.metrics.functional import binary_auroc
 
 # May use ignite in the future
 #from ignite.engine import Engine, Events
@@ -119,54 +122,97 @@ def training_loop(data, model, epochs=200):
     data = data.to(device)
     model = model.to(device)
 
+    # For organizing output
+    subset_masks = [
+        ('training', data.train_mask),
+        ('testing', data.test_mask),
+        ('validation', data.val_mask)
+    ]
+
+    metrics = [
+        ('loss', func.cross_entropy),
+        ('auroc', binary_auroc)
+    ]
+
+    best_auroc = 0
+    best_parameters = {}
+    best_epoch = -1
+
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1, weight_decay=5e-4)
 
     # Convert our column vector of 1 and -1 to 1, 0
     y = (data.y + 1) * 0.5
 
-    model.train()
-    loss_curves = np.zeros((epochs, 2), dtype=float)
+    loss_curves = defaultdict(lambda: np.zeros(epochs, dtype=float))
     for epoch in range(epochs):
+        # Training step
+        model.train()
         # Reset gradient accumulator
         optimizer.zero_grad()
         # Forward pass
         out = model(data)
         training_loss = func.cross_entropy(out[data.train_mask, 0], y[data.train_mask, 0])
-        test_loss = func.cross_entropy(out[data.test_mask, 0], y[data.test_mask, 0])
-        # Record loss curves
-        loss_curves[epoch, 0] = training_loss.numpy(force=True)
-        loss_curves[epoch, 1] = test_loss.numpy(force=True)
-        if epoch % 10 == 9:
-            print(f"epoch {epoch}, train, test losses {loss_curves[epoch]}")
         # Backprop
         training_loss.backward()
         # Step
         optimizer.step()
 
-    return model, loss_curves
+        # Validation step
+        model.eval()
+        with torch.no_grad():
+            y_hat = model(data)
+            # Metrics of interest
+            for subset, mask in subset_masks:
+                for metric, compute in metrics:
+                    value = compute(y_hat[mask, 0], y[mask, 0]).numpy(force=True)
+                    loss_curves[(subset, metric)] = value
+                    if epoch % 10 == 9:
+                        print(f"epoch {epoch}: {subset} {mask} = {value}")
+
+        # Save best model
+        auroc = loss_curves[('validation', 'auroc')][epoch]
+        if auroc > best_auroc:
+            best_auroc = auroc
+            best_parameters = model.state_dict()
+            best_epoch = epoch
+
+
+    return model, loss_curves, best_parameters, best_epoch
 
 def main(args):
 
     # Load data
     data = torch.load(args.data)
 
+    hyperparameters = {
+        'in_features': data.x.shape[1],
+        'edge_features': data.edge_attr.shape[1],
+        'channel_width': 10,
+        'encoder_depth': 2,
+        'gnn_depth': 2,
+        'decoder_depth': 2
+    }
+
     # Initialize model
-    model = NNConvNet(
-        in_features=data.x.shape[1],
-        edge_features=data.edge_attr.shape[1],
-        channel_width=10
-    )
+    model = NNConvNet(**hyperparameters)
 
     # Run training loop
-    model, loss_curves = training_loop(data, model)
+    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=1000)
 
     # Save loss curves
     args.loss_curve_csv.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(loss_curves, columns=['training', 'testing']).to_csv(args.loss_curve_csv)
+    pd.DataFrame(loss_curves).to_csv(args.loss_curve_csv)
 
     # Save model
     args.model_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(model, args.model_path)
+    torch.save(
+        {
+            'hyperparameters': hyperparameters,
+            'parameters': best_parameters,
+            'best_epoch': best_epoch
+        },
+        args.model_path
+    )
 
 if __name__ == '__main__':
     parser = create_parser()
