@@ -167,7 +167,7 @@ def training_loop(data, model, epochs=200):
                     value = compute(y_hat[mask, 0], y[mask, 0]).numpy(force=True)
                     loss_curves[(subset, metric)][epoch] = value
                     if epoch % 10 == 9:
-                        print(f"epoch {epoch}: {subset} {mask} = {value}")
+                        print(f"epoch {epoch}: {subset} {metric} = {value}")
 
         # Save best model
         auroc = loss_curves[('validation', 'auroc')][epoch]
