@@ -165,7 +165,7 @@ def training_loop(data, model, epochs=200):
             for subset, mask in subset_masks:
                 for metric, compute in metrics:
                     value = compute(y_hat[mask, 0], y[mask, 0]).numpy(force=True)
-                    loss_curves[(subset, metric)] = value
+                    loss_curves[(subset, metric)][epoch] = value
                     if epoch % 10 == 9:
                         print(f"epoch {epoch}: {subset} {mask} = {value}")
 
