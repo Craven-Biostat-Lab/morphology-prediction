@@ -36,6 +36,12 @@ def create_parser():
         type=Path
     )
 
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=1000
+    )
+
     return parser
 
 class NNConvNet(torch.nn.Module):
@@ -49,7 +55,7 @@ class NNConvNet(torch.nn.Module):
         encoder_depth=0,
         gnn_depth=1,
         decoder_depth=0,
-        out_features=1,
+        out_features=2,
         dropout_rate=0.5
     ):
         super().__init__()
@@ -151,7 +157,7 @@ def training_loop(data, model, epochs=200):
         optimizer.zero_grad()
         # Forward pass
         out = model(data)
-        training_loss = func.cross_entropy(out[data.train_mask, 0], y[data.train_mask, 0])
+        training_loss = func.cross_entropy(out[data.train_mask], y[data.train_mask, 0])
         # Backprop
         training_loss.backward()
         # Step
@@ -197,7 +203,7 @@ def main(args):
     model = NNConvNet(**hyperparameters)
 
     # Run training loop
-    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=10000)
+    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=args.epochs)
 
     # Save loss curves
     args.loss_curve_csv.parent.mkdir(parents=True, exist_ok=True)
