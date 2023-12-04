@@ -11,7 +11,7 @@ import torch.nn.functional as func
 
 from torch_geometric.nn import NNConv
 
-from torcheval.metrics.functional import binary_auroc
+from torcheval.metrics.functional import binary_auroc, binary_normalized_entropy
 
 # May use ignite in the future
 #from ignite.engine import Engine, Events
@@ -136,7 +136,7 @@ def training_loop(data, model, epochs=200):
     ]
 
     metrics = [
-        ('loss', func.cross_entropy),
+        ('loss', binary_normalized_entropy),
         ('auroc', binary_auroc)
     ]
 
@@ -147,7 +147,9 @@ def training_loop(data, model, epochs=200):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1, weight_decay=5e-4)
 
     # Convert our column vector of 1 and -1 to 1, 0
-    y = (data.y + 1) * 0.5
+    y_float = (data.y + 1) * 0.5
+    # Get integer y for crose entropy function
+    y = torch.tensor(y_float, dtype=torch.int64) 
 
     loss_curves = defaultdict(lambda: np.zeros(epochs, dtype=float))
     for epoch in range(epochs):
@@ -166,11 +168,11 @@ def training_loop(data, model, epochs=200):
         # Validation step
         model.eval()
         with torch.no_grad():
-            y_hat = model(data)
+            y_hat = func.softmax(model(data), dim=1)
             # Metrics of interest
             for subset, mask in subset_masks:
                 for metric, compute in metrics:
-                    value = compute(y_hat[mask, 0], y[mask, 0]).numpy(force=True)
+                    value = compute(y_hat[mask, 1], y_float[mask, 0]).numpy(force=True)
                     loss_curves[(subset, metric)][epoch] = value
                     if epoch % 10 == 9:
                         print(f"epoch {epoch}: {subset} {metric} = {value}")
