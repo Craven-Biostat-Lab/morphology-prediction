@@ -197,7 +197,7 @@ def main(args):
     model = NNConvNet(**hyperparameters)
 
     # Run training loop
-    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=1000)
+    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=10000)
 
     # Save loss curves
     args.loss_curve_csv.parent.mkdir(parents=True, exist_ok=True)
