@@ -44,6 +44,13 @@ def create_parser():
 
     return parser
 
+
+def log_expit(x):
+    """Implements log ( 1 / ( 1 + exp( -x ) ) )"""
+    stack = torch.stack([x, torch.zeros_like(x)], dim=0)
+    return torch.nn.functional.log_softmax(stack, dim=0)[0]
+
+
 class NNConvNet(torch.nn.Module):
     """Our application of NNConv"""
 
@@ -55,7 +62,7 @@ class NNConvNet(torch.nn.Module):
         encoder_depth=0,
         gnn_depth=1,
         decoder_depth=0,
-        out_features=2,
+        out_features=1,
         dropout_rate=0.5
     ):
         super().__init__()
@@ -120,8 +127,12 @@ class NNConvNet(torch.nn.Module):
             h = func.leaky_relu(h)
             h = func.dropout(h, p=self.dropout_rate)
             h = decoder_layer(h)
-        
-        return self.lin_out(h)
+
+        out = torch.squeeze(self.lin_out(h), -1)
+
+        return torch.nn.functional.log_softmax(
+            torch.stack([out, torch.zeros_like(out)], dim=1),
+            dim=1)
 
 def training_loop(data, model, epochs=200):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -159,7 +170,7 @@ def training_loop(data, model, epochs=200):
         optimizer.zero_grad()
         # Forward pass
         out = model(data)
-        training_loss = func.cross_entropy(out[data.train_mask], y[data.train_mask, 0])
+        training_loss = func.nll_loss(out[data.train_mask], y[data.train_mask, 0])
         # Backprop
         training_loss.backward()
         # Step
@@ -168,7 +179,7 @@ def training_loop(data, model, epochs=200):
         # Validation step
         model.eval()
         with torch.no_grad():
-            y_hat = func.softmax(model(data), dim=1)
+            y_hat = torch.exp(model(data))
             # Metrics of interest
             for subset, mask in subset_masks:
                 for metric, compute in metrics:
