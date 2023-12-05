@@ -190,7 +190,7 @@ def training_loop(data, model, epochs=200):
             i_start = batch * minority_size
             i_end = i_start + minority_size
             batch_inds = torch.cat([
-                ind[torch.range(i_start, i_end) % ind.shape[0]]
+                ind[torch.range(i_start, i_end, dtype=torch.int64) % ind.shape[0]]
                 for ind in permuted_class_inds
             ])            
             # Reset gradient accumulator
