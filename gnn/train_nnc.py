@@ -160,7 +160,7 @@ def training_loop(data, model, epochs=200):
     # Convert our column vector of 1 and -1 to 1, 0
     y_float = (data.y + 1) * 0.5
     # Get integer y for crose entropy function
-    y = torch.tensor(y_float, dtype=torch.int64)
+    y = torch.tensor(y_float, dtype=torch.int64)[0]
 
     # Count labels for balanced batching
     with torch.no_grad():
@@ -168,7 +168,7 @@ def training_loop(data, model, epochs=200):
         n_classes = values.shape[0]
         minority_size = values.min().item()
         class_inds = [
-            (data.train_mask & (y[:,0] == c)).nonzero()[:,0]
+            (data.train_mask & (y == c)).nonzero()[:,0]
             for c in range(n_classes)
         ]
         # Trick to get cieling of division with integer divide
@@ -197,7 +197,7 @@ def training_loop(data, model, epochs=200):
             optimizer.zero_grad()
             # Forward pass (loop)
             out = model(data)
-            training_loss = func.nll_loss(out[batch_inds], y[batch_inds, 0])
+            training_loss = func.nll_loss(out[batch_inds], y[batch_inds])
             # Backprop
             training_loss.backward()
             # Step
