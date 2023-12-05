@@ -13,6 +13,7 @@ torcheval = "*"
 
 [dev-packages]
 ipykernel = "*"
+seaborn = "*"
 
 [requires]
 python_version = "3.10"
