@@ -160,21 +160,48 @@ def training_loop(data, model, epochs=200):
     # Convert our column vector of 1 and -1 to 1, 0
     y_float = (data.y + 1) * 0.5
     # Get integer y for crose entropy function
-    y = torch.tensor(y_float, dtype=torch.int64) 
+    y = torch.tensor(y_float, dtype=torch.int64)[:,0]
+
+    # Count labels for balanced batching
+    with torch.no_grad():
+        values = torch.bincount(y)
+        n_classes = values.shape[0]
+        minority_size = values.min().item()
+        class_inds = [
+            (data.train_mask & (y == c)).nonzero()[:,0]
+            for c in range(n_classes)
+        ]
+        # Trick to get cieling of division with integer divide
+        n_batches = -(-data.train_mask.sum().item() // minority_size)
 
     loss_curves = defaultdict(lambda: np.zeros(epochs, dtype=float))
     for epoch in range(epochs):
         # Training step
         model.train()
-        # Reset gradient accumulator
-        optimizer.zero_grad()
-        # Forward pass
-        out = model(data)
-        training_loss = func.nll_loss(out[data.train_mask], y[data.train_mask, 0])
-        # Backprop
-        training_loss.backward()
-        # Step
-        optimizer.step()
+
+        # Permute class-specific node indeces
+        permuted_class_inds = [
+            inds[torch.randperm(inds.shape[0])]
+            for inds in class_inds
+        ]
+
+        for batch in range(n_batches):
+            # Build batch
+            i_start = batch * minority_size
+            i_end = i_start + minority_size
+            batch_inds = torch.cat([
+                ind[torch.range(i_start, i_end, dtype=torch.int64) % ind.shape[0]]
+                for ind in permuted_class_inds
+            ])            
+            # Reset gradient accumulator
+            optimizer.zero_grad()
+            # Forward pass (loop)
+            out = model(data)
+            training_loss = func.nll_loss(out[batch_inds], y[batch_inds])
+            # Backprop
+            training_loss.backward()
+            # Step
+            optimizer.step()
 
         # Validation step
         model.eval()
