@@ -25,6 +25,17 @@ def create_parser():
     return parser
 
 
+staus_mapping = {
+    1: TrialStatus.RUNNING, # Idle
+    2: TrialStatus.RUNNING, # Running
+    #3 - Removed
+    #4 - Completed
+    #5 - Held
+    #6 - Transferring output
+    #7 - Suspended
+}
+
+
 def hash_params(in_dict, length = None):
     """Hash of a dictionary.
     Adapted from https://github.com/Reed-CompBio/spras/blob/master/spras/util.py
@@ -39,7 +50,6 @@ def hash_params(in_dict, length = None):
         return result[:length]
 
 
-
 class CondorJobRunner(Runner):
     """Ax Trial Runner for HTCondor, based on the tutorials available at ax.dev"""
 
@@ -48,19 +58,22 @@ class CondorJobRunner(Runner):
         self,
         container_image_path: str,
         training_script_path: Path,
+        data_path: Path,
         logs_path: Path,
         inputs_path: Path,
         outputs_path: Path
     ):
         self.container_image_path = container_image_path
         self.training_script_path = training_script_path
+        self.data_path = data_path
         self.logs_path = logs_path
         self.inputs_path = inputs_path
         self.outputs_path = outputs_path
         self.schedd = htcondor.Schedd()
 
-        # Check that training script exists
-        assert training_script_path.exists()
+        # Check that training script and data file exist
+        assert self.training_script_path.exists()
+        assert self.data_path.exists()
 
         # Ensure log and input dirs exist
         self.logs_path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,12 +105,19 @@ class CondorJobRunner(Runner):
         with input_path.open('wt') as out_handle:
             json.dump(parameters, out_handle, sort_keys=True)
 
+        job_arguments = (
+            f'--data {self.data_path.name} '
+            '--model model.pt'
+            '--loss-curves-csv loss.csv'
+            f'--hyperparameters {self.inputs_path.name}'
+        )
+
         # Schedule job here
         condor_job = htcondor.Submit({
             'universe': 'container',
             'container_image': self.container_image_path,
             'executable': 'python', # Or use container's runscript?
-            'arguments': ' ',
+            'arguments': job_arguments,
             'log': self.logs_path.as_posix(),
             'out': (output_path / 'job.out').as_posix(),
             'err': (output_path / 'job.err').as_posix(),
@@ -105,18 +125,25 @@ class CondorJobRunner(Runner):
             '+WantGlideIn': 'true',
             '+WantGPULab': 'true',
             '+GPUJobLength': 'short',
-            'transfer_input_files': ','.join(input_path.as_posix(), self.training_script_path.as_posix()),
+            'transfer_input_files': ','.join(
+                input_path.as_posix(),
+                self.training_script_path.as_posix(),
+                self.data_path.as_posix()
+            ),
             # no transfer_output_files
             'request_cpus': '1',
             'request_gpus': '1',
             'request_memory': '24GB',
-            'request_disk': '12GB',
+            'request_disk': '24GB',
             'require_gpus': '(GlobalMemoryMb >= 40000)' 
         })
 
         submitted = self.schedd.submit(condor_job)
 
-        # Return identifying information
+        # Record the cluster ID.
+        # This run metadata will be attached to trial as `trial.run_metadata`
+        # by the base `Scheduler`.
+        return {'cluster_id': submitted.cluster()}
 
     def poll_trial_status(self, trials: Iterable) -> Dict[TrialStatus, Set[int]]:
         """Checks the status of any non-terminal trials and returns their
@@ -135,11 +162,17 @@ class CondorJobRunner(Runner):
             include trials that at the time of polling already have a terminal
             (ABANDONED, FAILED, COMPLETED) status (but it may).
         """
+
+        projection = ['JobStatus']
+        
         status_dict = defaultdict(set)
         for trial in trials:
-            # Get status here
-            status = TrialStatus.FAILED
-            status_dict[status].add(trial.index)
+            constraint = f'ClusterID == {trial.x}'
+            jobs = self.schedd.query(constraint=constraint, projection=projection)
+            if not jobs:
+                jobs = self.schedd.history(constraint=constraint, projection=projection)
+            for job in jobs:
+                status_dict[status_mapping[job['JobStatus']]].add(trial.index)
         
         return status_dict
 
