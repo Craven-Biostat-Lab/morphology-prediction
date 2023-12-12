@@ -1,5 +1,9 @@
 from typing import Dict, Iterable, Set, Any
 from collections import defaultdict
+from pathlib import Path
+import hashlib
+import json
+import base64
 
 from ax import RangeParameter, ParameterType, Objective, Experiment, SearchSpace, OptimizationConfig
 from ax.service.ax_client import AxClient, ObjectiveProperties
@@ -10,6 +14,8 @@ from ax.core.base_trial import BaseTrial, TrialStatus
 from ax.core.metric import Metric, MetricFetchResult, MetricFetchE
 from ax.utils.common.result import Ok, Err
 
+import htcondor
+
 
 def create_parser():
     """Command line argument parser."""
@@ -19,8 +25,48 @@ def create_parser():
     return parser
 
 
+def hash_params(in_dict, length = None):
+    """Hash of a dictionary.
+    Adapted from https://github.com/Reed-CompBio/spras/blob/master/spras/util.py
+    """
+    the_hash = hashlib.sha1()
+    dict_encoded = json.dumps(in_dict, sort_keys=True).encode()
+    the_hash.update(dict_encoded)
+    result = base64.b32encode(the_hash.digest()).decode('ascii')
+    if length is None or length < 1 or length > len(result):
+        return result
+    else:
+        return result[:length]
+
+
+
 class CondorJobRunner(Runner):
     """Ax Trial Runner for HTCondor, based on the tutorials available at ax.dev"""
+
+
+    def __init__(
+        self,
+        container_image_path: str,
+        training_script_path: Path,
+        logs_path: Path,
+        inputs_path: Path,
+        outputs_path: Path
+    ):
+        self.container_image_path = container_image_path
+        self.training_script_path = training_script_path
+        self.logs_path = logs_path
+        self.inputs_path = inputs_path
+        self.outputs_path = outputs_path
+        self.schedd = htcondor.Schedd()
+
+        # Check that training script exists
+        assert training_script_path.exists()
+
+        # Ensure log and input dirs exist
+        self.logs_path.parent.mkdir(parents=True, exist_ok=True)
+        self.inputs_path.mkdir(parents=True, exist_ok=True)
+
+
     def run(self, trial: BaseTrial):
         """Deploys a trial using HTCondor.
         
@@ -31,7 +77,44 @@ class CondorJobRunner(Runner):
             Dict of run metadata from the deployment process.
         """
 
+        parameters = trial.arm.parameters
+
+        param_hash = hash_params(parameters)
+
+        input_path = self.inputs_path / f'{param_hash}.params'
+
+        output_path = self.outputs_path / param_hash
+
+        # Ensure output dir exists
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Prep input file
+        with input_path.open('wt') as out_handle:
+            json.dump(parameters, out_handle, sort_keys=True)
+
         # Schedule job here
+        condor_job = htcondor.Submit({
+            'universe': 'container',
+            'container_image': self.container_image_path,
+            'executable': 'python', # Or use container's runscript?
+            'arguments': ' ',
+            'log': self.logs_path.as_posix(),
+            'out': (output_path / 'job.out').as_posix(),
+            'err': (output_path / 'job.err').as_posix(),
+            '+WantFlocking': 'true',
+            '+WantGlideIn': 'true',
+            '+WantGPULab': 'true',
+            '+GPUJobLength': 'short',
+            'transfer_input_files': ','.join(input_path.as_posix(), self.training_script_path.as_posix()),
+            # no transfer_output_files
+            'request_cpus': '1',
+            'request_gpus': '1',
+            'request_memory': '24GB',
+            'request_disk': '12GB',
+            'require_gpus': '(GlobalMemoryMb >= 40000)' 
+        })
+
+        submitted = self.schedd.submit(condor_job)
 
         # Return identifying information
 
