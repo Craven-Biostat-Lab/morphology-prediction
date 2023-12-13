@@ -1,0 +1,22 @@
+Bootstrap: docker
+From: pytorch/pytorch:{{ PYTORCH }}
+
+%arguments
+    PYTORCH=2.0.1-cuda11.7-cudnn8-runtime
+
+%post
+    pip install \
+        pandas \
+        openpyxl \
+        torch-geometric \
+        torcheval \
+        --no-warn-script-location
+    
+%runscript
+    python "$@"
+
+%labels
+    Author sverchkov@wisc.edu
+
+%help
+    A container with pytorch geometric and torcheval
