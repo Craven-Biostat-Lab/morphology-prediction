@@ -9,6 +9,7 @@ openpyxl = "*"
 torch = "*"
 torch-geometric = "*"
 stringdb-alias = "*"
+torcheval = "*"
 
 [dev-packages]
 ipykernel = "*"
