@@ -61,6 +61,7 @@ class CondorJobRunner(Runner):
         self,
         container_image_path: str,
         training_script_path: Path,
+        model_path: Path,
         data_path: Path,
         logs_path: Path,
         inputs_path: Path,
@@ -68,6 +69,7 @@ class CondorJobRunner(Runner):
     ):
         self.container_image_path = container_image_path
         self.training_script_path = training_script_path
+        self.model_path = model_path
         self.data_path = data_path
         self.logs_path = logs_path
         self.inputs_path = inputs_path
@@ -110,10 +112,13 @@ class CondorJobRunner(Runner):
 
         job_arguments = (
             f'--data {self.data_path.name} '
-            '--model model.pt'
-            '--loss-curves-csv loss.csv'
+            '--model-path model.pt '
+            '--loss-curves-csv loss.csv '
+            '--best-metrics best.json '
             f'--hyperparameters {self.inputs_path.name}'
         )
+
+        job_output_files = ['model.pt', 'loss.csv', 'best.json']
 
         # Schedule job here
         condor_job = htcondor.Submit({
@@ -124,6 +129,11 @@ class CondorJobRunner(Runner):
             'log': self.logs_path.as_posix(),
             'out': (output_path / 'job.out').as_posix(),
             'err': (output_path / 'job.err').as_posix(),
+            'transfer_output_files': ','.join(job_output_files),
+            'transfer_output_remaps': ';'.join(
+                f'{f}={(output_path / f).as_posix()}'
+                for f in job_output_files
+            ),
             '+WantFlocking': 'true',
             '+WantGlideIn': 'true',
             '+WantGPULab': 'true',
@@ -131,6 +141,7 @@ class CondorJobRunner(Runner):
             'transfer_input_files': ','.join(
                 input_path.as_posix(),
                 self.training_script_path.as_posix(),
+                self.model_path.as_posix(),
                 self.data_path.as_posix()
             ),
             # no transfer_output_files
@@ -148,7 +159,7 @@ class CondorJobRunner(Runner):
         # by the base `Scheduler`.
         return {
             'cluster_id': submitted.cluster(),
-            'output_model': output_path / 'model.pt'
+            'output_metrics': output_path / 'best.json'
         }
 
     def poll_trial_status(self, trials: Iterable) -> Dict[TrialStatus, Set[int]]:
@@ -189,7 +200,8 @@ class CondorJobMetric(Metric):
         try:
             # Get AUROC
             # Read off from result file
-            result = torch.load(trial.run_metadata.get('output_model'))
+            with trial.run_metadata.get('best_metrics') as in_handle:
+                result = json.load(in_handle)
             auroc = result['best_auroc']
             df_dict = {
                 "trial_index": trial.index,
@@ -212,8 +224,9 @@ def main(args):
     # TODO: Get from args
     n_jobs = 5
     job_timeout_hours = 2
-    container_image_path = ''
-    training_script_path = Path()
+    container_image_path = 'osdf:///chtc/staging/sverchkov/pyg.sif'
+    training_script_path = Path('train_nnc.py')
+    model_path = Path('nets.py')
     data_path = Path('data/cpg0016_v1.pt')
     logs_path = Path('ax.log')
     inputs_path = Path('ax_in')
@@ -268,6 +281,7 @@ def main(args):
         runner=CondorJobRunner(
             container_image_path=container_image_path,
             training_script_path=training_script_path,
+            model_path=model_path,
             data_path=data_path,
             logs_path=logs_path,
             inputs_path=inputs_path,

@@ -7,6 +7,15 @@ from torch_geometric.nn import NNConv
 class NNConvNet(torch.nn.Module):
     """Our application of NNConv"""
 
+    tunable_hyperparameters = (
+        'channel_width',
+        'encoder_depth',
+        'gnn_depth',
+        'decoder_depth',
+        'out_features',
+        'dropout_rate'
+    )
+
     def __init__(
         self,
         in_features,

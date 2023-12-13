@@ -3,6 +3,8 @@
 from pathlib import Path
 from collections import defaultdict
 
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -35,6 +37,14 @@ def create_parser():
         '--loss-curve-csv',
         type=Path
     )
+    parser.add_argument(
+        '--best-metrics',
+        type=Path
+    )
+    parser.add_argument(
+        '--hyperparameters',
+        type=Path
+    )
 
     parser.add_argument(
         '--epochs',
@@ -45,7 +55,7 @@ def create_parser():
     return parser
 
 
-def training_loop(data, model, epochs=200):
+def training_loop(data, model, epochs=200, lr=0.1, weight_decay=5e-4):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = data.to(device)
     model = model.to(device)
@@ -66,7 +76,7 @@ def training_loop(data, model, epochs=200):
     best_parameters = {}
     best_epoch = -1
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Convert our column vector of 1 and -1 to 1, 0
     y_float = (data.y + 1) * 0.5
@@ -134,27 +144,41 @@ def training_loop(data, model, epochs=200):
             best_epoch = epoch
 
 
-    return model, loss_curves, best_parameters, best_epoch
+    return model, loss_curves, best_parameters, best_epoch, best_auroc
 
 def main(args):
 
     # Load data
     data = torch.load(args.data)
 
+    # Read hyperparameters
+    with args.hyperparameters as in_handle:
+        input_hyperparameters = json.load(in_handle)
+
     hyperparameters = {
         'in_features': data.x.shape[1],
         'edge_features': data.edge_attr.shape[1],
-        'channel_width': 10,
-        'encoder_depth': 2,
-        'gnn_depth': 2,
-        'decoder_depth': 2
     }
+    hyperparameters.update({
+        k: v
+        for k, v in input_hyperparameters
+        if k in NNConvNet.tunable_hyperparameters
+    })
+
+    learning_rate = input_hyperparameters.get('learning_rate', 0.1)
+    weight_decay = input_hyperparameters.get('weight_decay', 5e-4)
 
     # Initialize model
     model = NNConvNet(**hyperparameters)
 
     # Run training loop
-    model, loss_curves, best_parameters, best_epoch = training_loop(data, model, epochs=args.epochs)
+    model, loss_curves, best_parameters, best_epoch, best_auroc = training_loop(
+        data,
+        model,
+        epochs=args.epochs,
+        lr=learning_rate,
+        weight_decay=weight_decay
+    )
 
     # Save loss curves
     args.loss_curve_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +194,9 @@ def main(args):
         },
         args.model_path
     )
+
+    with args.metric_path.open('w') as out_handle:
+        json.dump({'best_auroc': best_auroc}, out_handle)
 
 if __name__ == '__main__':
     parser = create_parser()
