@@ -5,12 +5,16 @@ import hashlib
 import json
 import base64
 
+import torch
+import pandas as pd
+
 from ax import RangeParameter, ParameterType, Objective, Experiment, SearchSpace, OptimizationConfig
 from ax.service.ax_client import AxClient, ObjectiveProperties
 from ax.service.scheduler import Scheduler, SchedulerOptions
 from ax.modelbridge.dispatch_utils import choose_generation_strategy
 from ax.core.runner import Runner
 from ax.core.base_trial import BaseTrial, TrialStatus
+from ax.core.data import Data
 from ax.core.metric import Metric, MetricFetchResult, MetricFetchE
 from ax.utils.common.result import Ok, Err
 
@@ -25,14 +29,14 @@ def create_parser():
     return parser
 
 
-staus_mapping = {
-    1: TrialStatus.RUNNING, # Idle
+status_mapping = {
+    1: TrialStatus.STAGED, # Idle
     2: TrialStatus.RUNNING, # Running
-    #3 - Removed
-    #4 - Completed
-    #5 - Held
-    #6 - Transferring output
-    #7 - Suspended
+    3: TrialStatus.ABANDONED, # Removed
+    4: TrialStatus.CANDIDATE, # Completed
+    5: TrialStatus.RUNNING, # Held -- treated as still running
+    6: TrialStatus.RUNNING, # Transferring output
+    7: TrialStatus.RUNNING # Suspended
 }
 
 
@@ -52,7 +56,6 @@ def hash_params(in_dict, length = None):
 
 class CondorJobRunner(Runner):
     """Ax Trial Runner for HTCondor, based on the tutorials available at ax.dev"""
-
 
     def __init__(
         self,
@@ -143,7 +146,10 @@ class CondorJobRunner(Runner):
         # Record the cluster ID.
         # This run metadata will be attached to trial as `trial.run_metadata`
         # by the base `Scheduler`.
-        return {'cluster_id': submitted.cluster()}
+        return {
+            'cluster_id': submitted.cluster(),
+            'output_model': output_path / 'model.pt'
+        }
 
     def poll_trial_status(self, trials: Iterable) -> Dict[TrialStatus, Set[int]]:
         """Checks the status of any non-terminal trials and returns their
@@ -182,20 +188,36 @@ class CondorJobMetric(Metric):
     def fetch_trial_data(self, trial: BaseTrial, **kwargs: Any) -> MetricFetchResult:
         try:
             # Get AUROC
-            raise NotImplementedError()
-            return Ok()
+            # Read off from result file
+            result = torch.load(trial.run_metadata.get('output_model'))
+            auroc = result['best_auroc']
+            df_dict = {
+                "trial_index": trial.index,
+                "metric_name": self.name,
+                "arm_name": trial.arm.name,
+                "mean": auroc,
+                # Can be set to 0.0 if function is known to be noiseless
+                # or to an actual value when SEM is known. Setting SEM to
+                # `None` results in Ax assuming unknown noise and inferring
+                # noise level from data.
+                "sem": None,
+            }
+            return Ok(value=Data(df=pd.DataFrame.from_records([df_dict])))
         except Exception as e:
             return Err(MetricFetchE(message=f'Failed to fetch {self.name}', exception=e))
 
 
-def train_evaluate(parametrization):
-    pass
-
 def main(args):
 
     # TODO: Get from args
-    n_parallel_jobs = 10
+    n_jobs = 5
     job_timeout_hours = 2
+    container_image_path = ''
+    training_script_path = Path()
+    data_path = Path('data/cpg0016_v1.pt')
+    logs_path = Path('ax.log')
+    inputs_path = Path('ax_in')
+    outputs_path = Path('ax_out')
 
     parameters = [
         RangeParameter(
@@ -243,7 +265,14 @@ def main(args):
         name='net_tuning',
         search_space=SearchSpace(parameters=parameters),
         optimization_config=OptimizationConfig(objective=objective),
-        runner=CondorJobRunner()
+        runner=CondorJobRunner(
+            container_image_path=container_image_path,
+            training_script_path=training_script_path,
+            data_path=data_path,
+            logs_path=logs_path,
+            inputs_path=inputs_path,
+            outputs_path=outputs_path
+        )
     )
 
     # Automatically choose generation strategy
@@ -257,7 +286,7 @@ def main(args):
     )
 
     # For future, we need to set up optimization criteria and run_all_trials
-    scheduler.run_n_trials(max_trials=n_parallel_jobs, timeout_hours=job_timeout_hours)
+    scheduler.run_n_trials(max_trials=n_jobs, timeout_hours=job_timeout_hours)
 
 if __name__ == '__main__':
     parser = create_parser()
