@@ -130,20 +130,20 @@ class CondorJobRunner(Runner):
             'out': (output_path / 'job.out').as_posix(),
             'err': (output_path / 'job.err').as_posix(),
             'transfer_output_files': ','.join(job_output_files),
-            'transfer_output_remaps': ';'.join(
+            'transfer_output_remaps': '"'+';'.join(
                 f'{f}={(output_path / f).as_posix()}'
                 for f in job_output_files
-            ),
+            )+'"',
             '+WantFlocking': 'true',
             '+WantGlideIn': 'true',
             '+WantGPULab': 'true',
             '+GPUJobLength': 'short',
-            'transfer_input_files': ','.join(
+            'transfer_input_files': ','.join((
                 input_path.as_posix(),
                 self.training_script_path.as_posix(),
                 self.model_path.as_posix(),
                 self.data_path.as_posix()
-            ),
+            )),
             # no transfer_output_files
             'request_cpus': '1',
             'request_gpus': '1',
