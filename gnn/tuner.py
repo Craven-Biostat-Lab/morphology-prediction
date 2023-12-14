@@ -4,12 +4,12 @@ from pathlib import Path
 import hashlib
 import json
 import base64
+import logging
 
-import torch
 import pandas as pd
 
 from ax import RangeParameter, ParameterType, Objective, Experiment, SearchSpace, OptimizationConfig
-from ax.service.ax_client import AxClient, ObjectiveProperties
+#from ax.service.ax_client import AxClient, ObjectiveProperties
 from ax.service.scheduler import Scheduler, SchedulerOptions
 from ax.modelbridge.dispatch_utils import choose_generation_strategy
 from ax.core.runner import Runner
@@ -19,6 +19,9 @@ from ax.core.metric import Metric, MetricFetchResult, MetricFetchE
 from ax.utils.common.result import Ok, Err
 
 import htcondor
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_parser():
@@ -67,6 +70,7 @@ class CondorJobRunner(Runner):
         inputs_path: Path,
         outputs_path: Path
     ):
+        logger.debug('Building CondorJobRunner')
         self.container_image_path = container_image_path
         self.training_script_path = training_script_path
         self.model_path = model_path
@@ -76,6 +80,8 @@ class CondorJobRunner(Runner):
         self.outputs_path = outputs_path
         self.schedd = htcondor.Schedd()
 
+        logger.debug(f'Using HTCondor Scheduler: {self.schedd}')
+
         # Check that training script and data file exist
         assert self.training_script_path.exists()
         assert self.data_path.exists()
@@ -83,6 +89,7 @@ class CondorJobRunner(Runner):
         # Ensure log and input dirs exist
         self.logs_path.parent.mkdir(parents=True, exist_ok=True)
         self.inputs_path.mkdir(parents=True, exist_ok=True)
+        logger.debug('CondorJobRunner built.')
 
 
     def run(self, trial: BaseTrial):
@@ -94,6 +101,8 @@ class CondorJobRunner(Runner):
         Returns:
             Dict of run metadata from the deployment process.
         """
+
+        logger.debug('Running Trial')
 
         parameters = trial.arm.parameters
 
@@ -115,36 +124,37 @@ class CondorJobRunner(Runner):
             '--model-path model.pt '
             '--loss-curves-csv loss.csv '
             '--best-metrics best.json '
-            f'--hyperparameters {self.inputs_path.name}'
+            f'--hyperparameters {input_path.name}'
         )
 
         job_output_files = ['model.pt', 'loss.csv', 'best.json']
+
+        logger.debug('Building submit object...')
 
         # Schedule job here
         condor_job = htcondor.Submit({
             'universe': 'container',
             'container_image': self.container_image_path,
-            'executable': 'python', # Or use container's runscript?
+            #'executable': 'python', # Use container's runscript?
             'arguments': job_arguments,
             'log': self.logs_path.as_posix(),
-            'out': (output_path / 'job.out').as_posix(),
-            'err': (output_path / 'job.err').as_posix(),
-            'transfer_output_files': ','.join(job_output_files),
-            'transfer_output_remaps': '"'+';'.join(
-                f'{f}={(output_path / f).as_posix()}'
-                for f in job_output_files
-            )+'"',
+            'output': (output_path / 'job.out').as_posix(),
+            'error': (output_path / 'job.err').as_posix(),
             '+WantFlocking': 'true',
             '+WantGlideIn': 'true',
             '+WantGPULab': 'true',
-            '+GPUJobLength': 'short',
+            '+GPUJobLength': '"short"',
             'transfer_input_files': ','.join((
                 input_path.as_posix(),
                 self.training_script_path.as_posix(),
                 self.model_path.as_posix(),
                 self.data_path.as_posix()
             )),
-            # no transfer_output_files
+            'transfer_output_files': ','.join(job_output_files),
+            'transfer_output_remaps': '"'+';'.join(
+                f'{f}={(output_path / f).as_posix()}'
+                for f in job_output_files
+            )+'"',
             'request_cpus': '1',
             'request_gpus': '1',
             'request_memory': '24GB',
@@ -152,7 +162,11 @@ class CondorJobRunner(Runner):
             'require_gpus': '(GlobalMemoryMb >= 40000)' 
         })
 
+        logger.debug(f'Submitting {condor_job}...')
+
         submitted = self.schedd.submit(condor_job)
+
+        logger.debug('...submitted!')
 
         # Record the cluster ID.
         # This run metadata will be attached to trial as `trial.run_metadata`
@@ -180,23 +194,26 @@ class CondorJobRunner(Runner):
             (ABANDONED, FAILED, COMPLETED) status (but it may).
         """
 
+        logger.debug('Polling jobs...')
+
         projection = ['JobStatus']
         
         status_dict = defaultdict(set)
         for trial in trials:
-            constraint = f'ClusterID == {trial.x}'
+            constraint = f'ClusterID == {trial.run_metadata.get("cluster_id")}'
             jobs = self.schedd.query(constraint=constraint, projection=projection)
             if not jobs:
                 jobs = self.schedd.history(constraint=constraint, projection=projection)
             for job in jobs:
                 status_dict[status_mapping[job['JobStatus']]].add(trial.index)
-        
+        logger.debug(f'poll results: {status_dict}')
         return status_dict
 
 
 class CondorJobMetric(Metric):
     """Pulls data for trial from external system"""
     def fetch_trial_data(self, trial: BaseTrial, **kwargs: Any) -> MetricFetchResult:
+        logger.debug('Pulling trial result...')
         try:
             # Get AUROC
             # Read off from result file
@@ -221,7 +238,10 @@ class CondorJobMetric(Metric):
 
 def main(args):
 
+    logging.basicConfig(level=logging.DEBUG)
+
     # TODO: Get from args
+    logger.setLevel(logging.DEBUG)
     n_jobs = 5
     job_timeout_hours = 2
     container_image_path = 'osdf:///chtc/staging/sverchkov/pyg.sif'
