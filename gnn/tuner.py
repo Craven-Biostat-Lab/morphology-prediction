@@ -120,6 +120,7 @@ class CondorJobRunner(Runner):
             json.dump(parameters, out_handle, sort_keys=True)
 
         job_arguments = (
+            f'{self.training_script_path.name} '
             f'--data {self.data_path.name} '
             '--model-path model.pt '
             '--loss-curves-csv loss.csv '
@@ -159,7 +160,7 @@ class CondorJobRunner(Runner):
             'request_gpus': '1',
             'request_memory': '24GB',
             'request_disk': '24GB',
-            'require_gpus': '(GlobalMemoryMb >= 40000)' 
+            'require_gpus': '(Capability >= 3.7) && (GlobalMemoryMb >= 30000)' 
         })
 
         logger.debug(f'Submitting {condor_job}...')
