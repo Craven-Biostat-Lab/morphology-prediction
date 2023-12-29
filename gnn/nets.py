@@ -36,14 +36,14 @@ class NNConvNet(torch.nn.Module):
         self.lin_in = torch.nn.Linear(in_features, channel_width, bias=True)
 
         # Encoder layers
-        self.encoder = torch.nn.Sequential(
+        self.encoder = torch.nn.Sequential(*(
             torch.nn.Sequential(
                 torch.nn.LeakyReLU(),
                 torch.nn.Dropout(p=dropout_rate),
                 torch.nn.Linear(channel_width, channel_width, bias=True)
             )
             for _ in range(encoder_depth)
-        )
+        ))
 
         # Middle layers: NNConv layers
         # NN for NNConv is shared across layers
@@ -66,14 +66,14 @@ class NNConvNet(torch.nn.Module):
         )
 
         # Decoder layers
-        self.decoder = torch.nn.Sequential(
+        self.decoder = torch.nn.Sequential(*(
             torch.nn.Sequential(
                 torch.nn.LeakyReLU(),
                 torch.nn.Dropout(p=dropout_rate),
                 torch.nn.Linear(channel_width, channel_width, bias=True)
             )
             for _ in range(decoder_depth)
-        )
+        ))
 
         # Last layer: transform to result dimension.
         self.lin_out = torch.nn.Linear(channel_width, out_features, bias=True)

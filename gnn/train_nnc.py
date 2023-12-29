@@ -1,5 +1,6 @@
 """Train an NNConv net given morphology data."""
 
+from logging import getLogger
 from pathlib import Path
 from collections import defaultdict
 
@@ -19,6 +20,9 @@ from nets import NNConvNet
 #from ignite.engine import Engine, Events
 #from ignite.metrics import MeanSquaredError
 #from ignite.contrib.metrics.regression import R2Score
+
+logger = getLogger(__name__)
+
 
 def create_parser():
     """Command line argument parser."""
@@ -94,55 +98,62 @@ def training_loop(data, model, epochs=200, lr=0.1, weight_decay=5e-4):
         ]
         # Trick to get cieling of division with integer divide
         n_batches = -(-data.train_mask.sum().item() // minority_size)
+        # Low-memory training: small batches
+        #n_batches = values.max().item()
 
     loss_curves = defaultdict(lambda: np.zeros(epochs, dtype=float))
-    for epoch in range(epochs):
-        # Training step
-        model.train()
 
-        # Permute class-specific node indeces
-        permuted_class_inds = [
-            inds[torch.randperm(inds.shape[0])]
-            for inds in class_inds
-        ]
+    try:
 
-        for batch in range(n_batches):
-            # Build batch
-            i_start = batch * minority_size
-            i_end = i_start + minority_size
-            batch_inds = torch.cat([
-                ind[torch.range(i_start, i_end, dtype=torch.int64) % ind.shape[0]]
-                for ind in permuted_class_inds
-            ])            
-            # Reset gradient accumulator
-            optimizer.zero_grad()
-            # Forward pass (loop)
-            out = model(data)
-            training_loss = func.nll_loss(out[batch_inds], y[batch_inds])
-            # Backprop
-            training_loss.backward()
-            # Step
-            optimizer.step()
+        for epoch in range(epochs):
+            # Training step
+            model.train()
 
-        # Validation step
-        model.eval()
-        with torch.no_grad():
-            y_hat = torch.exp(model(data))
-            # Metrics of interest
-            for subset, mask in subset_masks:
-                for metric, compute in metrics:
-                    value = compute(y_hat[mask, 1], y_float[mask, 0]).numpy(force=True)
-                    loss_curves[(subset, metric)][epoch] = value
-                    if epoch % 10 == 9:
-                        print(f"epoch {epoch}: {subset} {metric} = {value}")
+            # Permute class-specific node indeces
+            permuted_class_inds = [
+                inds[torch.randperm(inds.shape[0])]
+                for inds in class_inds
+            ]
 
-        # Save best model
-        auroc = loss_curves[('validation', 'auroc')][epoch]
-        if auroc > best_auroc:
-            best_auroc = auroc
-            best_parameters = model.state_dict()
-            best_epoch = epoch
+            for batch in range(n_batches):
+                # Build batch
+                i_start = batch * minority_size
+                i_end = i_start + minority_size
+                batch_inds = torch.cat([
+                    ind[torch.range(i_start, i_end, dtype=torch.int64) % ind.shape[0]]
+                    for ind in permuted_class_inds
+                ])            
+                # Reset gradient accumulator
+                optimizer.zero_grad()
+                # Forward pass (loop)
+                out = model(data)
+                training_loss = func.nll_loss(out[batch_inds], y[batch_inds])
+                # Backprop
+                training_loss.backward()
+                # Step
+                optimizer.step()
 
+            # Validation step
+            model.eval()
+            with torch.no_grad():
+                y_hat = torch.exp(model(data))
+                # Metrics of interest
+                for subset, mask in subset_masks:
+                    for metric, compute in metrics:
+                        value = compute(y_hat[mask, 1], y_float[mask, 0]).numpy(force=True)
+                        loss_curves[(subset, metric)][epoch] = value
+                        if epoch % 10 == 9:
+                            print(f"epoch {epoch}: {subset} {metric} = {value}")
+
+            # Save best model
+            auroc = loss_curves[('validation', 'auroc')][epoch]
+            if auroc > best_auroc:
+                best_auroc = auroc
+                best_parameters = model.state_dict()
+                best_epoch = epoch
+
+    except torch.cuda.OutOfMemoryError:
+        logger.exception('CUDA out of memory.')
 
     return model, loss_curves, best_parameters, best_epoch, best_auroc
 
@@ -152,7 +163,7 @@ def main(args):
     data = torch.load(args.data)
 
     # Read hyperparameters
-    with args.hyperparameters as in_handle:
+    with args.hyperparameters.open('rt') as in_handle:
         input_hyperparameters = json.load(in_handle)
 
     hyperparameters = {
@@ -161,7 +172,7 @@ def main(args):
     }
     hyperparameters.update({
         k: v
-        for k, v in input_hyperparameters
+        for k, v in input_hyperparameters.items()
         if k in NNConvNet.tunable_hyperparameters
     })
 
@@ -195,7 +206,7 @@ def main(args):
         args.model_path
     )
 
-    with args.metric_path.open('w') as out_handle:
+    with args.best_metrics.open('w') as out_handle:
         json.dump({'best_auroc': best_auroc}, out_handle)
 
 if __name__ == '__main__':
