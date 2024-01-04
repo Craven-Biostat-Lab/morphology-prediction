@@ -123,7 +123,7 @@ class CondorJobRunner(Runner):
             f'{self.training_script_path.name} '
             f'--data {self.data_path.name} '
             '--model-path model.pt '
-            '--loss-curves-csv loss.csv '
+            '--loss-curve-csv loss.csv '
             '--best-metrics best.json '
             f'--hyperparameters {input_path.name}'
         )
@@ -245,7 +245,7 @@ def main(args):
     logger.setLevel(logging.DEBUG)
     n_jobs = 5
     job_timeout_hours = 2
-    container_image_path = 'osdf:///chtc/staging/sverchkov/pyg.sif'
+    container_image_path = 'osdf:///chtc/staging/sverchkov/pyg1.sif'
     training_script_path = Path('train_nnc.py')
     model_path = Path('nets.py')
     data_path = Path('data/cpg0016_v1.pt')
