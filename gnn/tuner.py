@@ -245,7 +245,10 @@ class CondorJobMetric(Metric):
 def get_parameters(parameters_json: Path):
 
     with parameters_json.open('rt') as in_handle:
-        parameters = json.load(in_handle)
+        if parameters_json.suffix.lower() in {'yml', 'yaml'}:
+            parameters = yaml.safe_load(in_handle)
+        else:
+            parameters = json.load(in_handle)
 
     return [InstantiationBase.parameter_from_json(parameter) for parameter in parameters]
 
