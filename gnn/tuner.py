@@ -3,6 +3,7 @@ from collections import defaultdict
 from pathlib import Path
 import hashlib
 import json
+import yaml
 import base64
 import logging
 
@@ -11,6 +12,7 @@ import pandas as pd
 from ax import RangeParameter, ParameterType, Objective, Experiment, SearchSpace, OptimizationConfig
 #from ax.service.ax_client import AxClient, ObjectiveProperties
 from ax.service.scheduler import Scheduler, SchedulerOptions
+from ax.service.utils.instantiation import InstantiationBase
 from ax.modelbridge.dispatch_utils import choose_generation_strategy
 from ax.core.runner import Runner
 from ax.core.base_trial import BaseTrial, TrialStatus
@@ -28,6 +30,9 @@ def create_parser():
     """Command line argument parser."""
     from argparse import ArgumentParser
     parser = ArgumentParser('Net training and tuning with Condor and Ax')
+
+    parser.add_argument('parameter-space', type=Path)
+    parser.add_argument('quiet', action='store_true')
 
     return parser
 
@@ -237,12 +242,21 @@ class CondorJobMetric(Metric):
             return Err(MetricFetchE(message=f'Failed to fetch {self.name}', exception=e))
 
 
+def get_parameters(parameters_json: Path):
+
+    with parameters_json.open('rt') as in_handle:
+        parameters = json.load(in_handle)
+
+    return [InstantiationBase.parameter_from_json(parameter) for parameter in parameters]
+
+
 def main(args):
 
     logging.basicConfig(level=logging.DEBUG)
 
+    logger.setLevel(logging.WARNING if args.quiet else logging.DEBUG)
+    
     # TODO: Get from args
-    logger.setLevel(logging.DEBUG)
     n_jobs = 5
     job_timeout_hours = 2
     container_image_path = 'osdf:///chtc/staging/sverchkov/pyg1.sif'
@@ -253,45 +267,7 @@ def main(args):
     inputs_path = Path('ax_in')
     outputs_path = Path('ax_out')
 
-    parameters = [
-        RangeParameter(
-            name = 'learning_rate',
-            parameter_type = ParameterType.FLOAT,
-            lower = 1e-6,
-            upper = 0.4
-        ),
-        RangeParameter(
-            name='channel_width',
-            parameter_type=ParameterType.INT,
-            lower=1,
-            upper=1000,
-            log_scale=True
-        ),
-        RangeParameter(
-            name='encoder_depth',
-            parameter_type=ParameterType.INT,
-            lower=1,
-            upper=10
-        ),
-        RangeParameter(
-            name='gnn_depth',
-            parameter_type=ParameterType.INT,
-            lower=1,
-            upper=10
-        ),
-        RangeParameter(
-            name='decoder_depth',
-            parameter_type=ParameterType.INT,
-            lower=1,
-            upper=10
-        ),
-        RangeParameter(
-            name='dropout_rate',
-            parameter_type=ParameterType.FLOAT,
-            lower=0.0,
-            upper=1.0,
-        )
-    ]
+    parameters = get_parameters(args.parameter_space)
 
     objective = Objective(metric=CondorJobMetric(name='auroc'), minimize=False)
 
@@ -322,6 +298,10 @@ def main(args):
 
     # For future, we need to set up optimization criteria and run_all_trials
     scheduler.run_n_trials(max_trials=n_jobs, timeout_hours=job_timeout_hours)
+
+    # Save results
+    experiment.fetch_data().df.to_csv(outputs_path/'experiment_data.csv')
+
 
 if __name__ == '__main__':
     parser = create_parser()
