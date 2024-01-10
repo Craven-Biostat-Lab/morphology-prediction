@@ -1,0 +1,14 @@
+# HTCondor Submit File
+# Runs Tuner.py as a local job (picking local in favor or scheduler)
+# Assumes the existance of a conda environment with the ax platform when submitting
+
+universe = local
+
+log = output/tuner.log
+output = output/tuner.out
+error = output/tuner.err
+
+executable = $ENV(CONDA_PREFIX)/bin/python
+arguments = tuner.py
+
+queue

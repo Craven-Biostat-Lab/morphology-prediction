@@ -1,0 +1,28 @@
+- name: architecture
+  type: fixed
+  value: NNConvNet
+- name: learning_rate
+  type: range
+  value_type: float
+  bounds: [1e-6, 0.4]
+- name: channel_width
+  type: range
+  value_type: int
+  bounds: [1, 1000]
+  log_scale: true
+- name: encoder_depth
+  type: range
+  value_type: int
+  bounds: [1, 10]
+- name: gnn_depth
+  type: range
+  value_type: int
+  bounds: [1, 10]
+- name: decoder_depth
+  type: range
+  value_type: int
+  bounds: [1, 10]
+- name: dropout_rate
+  type: range
+  value_type: float
+  bounds: [0.0, 1.0]
