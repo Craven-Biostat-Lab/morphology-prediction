@@ -31,6 +31,7 @@ def create_parser():
     from argparse import ArgumentParser
     parser = ArgumentParser('Net training and tuning with Condor and Ax')
 
+    parser.add_argument('--data', type=Path)
     parser.add_argument('--parameter-space', type=Path)
     parser.add_argument('quiet', action='store_true')
 
@@ -265,7 +266,7 @@ def main(args):
     container_image_path = 'osdf:///chtc/staging/sverchkov/pyg1.sif'
     training_script_path = Path('train_nnc.py')
     model_path = Path('nets.py')
-    data_path = Path('data/cpg0016_v1.pt')
+    data_path = args.data
     logs_path = Path('ax.log')
     inputs_path = Path('ax_in')
     outputs_path = Path('ax_out')
