@@ -53,7 +53,7 @@ def prep_edges(stringdb_txt):
 
     return protein_lookup, edge_index, edge_attr
 
-def get_protein_go_map(mapfile_xlsx, protein_col='Unnamed: 20', go_col='Unnamed: 6'):
+def get_protein_go_map(mapfile_xlsx, protein_col='Unnamed: 20', go_col='Unnamed: 6', prune=0):
 
     raw_df = pd.read_excel(mapfile_xlsx)
 
@@ -67,6 +67,10 @@ def get_protein_go_map(mapfile_xlsx, protein_col='Unnamed: 20', go_col='Unnamed:
         .assign(Protein=lambda df: '9606.' + df.Protein.str.partition('.')[0])
         .pivot_table(index='Protein', columns='GO', aggfunc=lambda _: 1, fill_value=0)
     )
+
+    # Frequency pruning
+    if prune and prune > 0:
+        go_mat = go_mat.loc[:, go_mat.sum(axis='index') >= prune]
 
     return go_mat
 
@@ -132,7 +136,7 @@ def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, str
     protein_lookup, edge_index, edge_attr = prep_edges(stringdb_txt)
 
     # Get GO features
-    go_feature_matrix = get_protein_go_map(mapfile_xlsx)
+    go_feature_matrix = get_protein_go_map(mapfile_xlsx, prune=24)
 
     # ID mapper
     mapper = HGNCMapper(string_info_file, string_alias_file)
@@ -178,7 +182,7 @@ def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, str
 
 def main():
 
-    output_file = Path('data/cpg0016_v1.pt')
+    output_file = Path('data/cpg0016_v2_24.pt')
     assert not output_file.exists(), f"Won't overwrite existing {output_file}"
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
