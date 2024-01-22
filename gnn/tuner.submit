@@ -9,6 +9,6 @@ output = output/tuner.out
 error = output/tuner.err
 
 executable = $ENV(CONDA_PREFIX)/bin/python
-arguments = tuner.py
+arguments = tuner.py --parameter-space config/mlp-run-1.yaml
 
 queue

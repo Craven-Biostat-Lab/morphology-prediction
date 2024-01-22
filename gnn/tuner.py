@@ -31,7 +31,7 @@ def create_parser():
     from argparse import ArgumentParser
     parser = ArgumentParser('Net training and tuning with Condor and Ax')
 
-    parser.add_argument('parameter-space', type=Path)
+    parser.add_argument('--parameter-space', type=Path)
     parser.add_argument('quiet', action='store_true')
 
     return parser
@@ -245,7 +245,7 @@ class CondorJobMetric(Metric):
 def get_parameters(parameters_json: Path):
 
     with parameters_json.open('rt') as in_handle:
-        if parameters_json.suffix.lower() in {'yml', 'yaml'}:
+        if parameters_json.suffix.lower() in {'.yml', '.yaml'}:
             parameters = yaml.safe_load(in_handle)
         else:
             parameters = json.load(in_handle)

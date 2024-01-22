@@ -4,7 +4,7 @@
 - name: learning_rate
   type: range
   value_type: float
-  bounds: [1e-6, 1e-2]
+  bounds: [1.0e-6, 1.0e-2]
 - name: channel_width
   type: range
   value_type: int
