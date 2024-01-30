@@ -9,6 +9,11 @@ output = output/tuner.out
 error = output/tuner.err
 
 executable = $ENV(CONDA_PREFIX)/bin/python
-arguments = tuner.py --data data/cpg0016_v2_6.pt --parameter-space config/mlp-run-1.yaml
+arguments = tuner.py --data data/cpg0016_v3_$(pruning).pt --parameter-space config/lr-run-1.yaml --dir-prefix ax_$(pruning)
 
-queue
+queue pruning from (
+    3
+    6
+    12
+    24
+)

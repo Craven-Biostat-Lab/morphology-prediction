@@ -33,6 +33,7 @@ def create_parser():
 
     parser.add_argument('--data', type=Path)
     parser.add_argument('--parameter-space', type=Path)
+    parser.add_argument('--dir-prefix', type=str, default='ax')
     parser.add_argument('quiet', action='store_true')
 
     return parser
@@ -268,8 +269,8 @@ def main(args):
     model_path = Path('nets.py')
     data_path = args.data
     logs_path = Path('ax.log')
-    inputs_path = Path('ax_in')
-    outputs_path = Path('ax_out')
+    inputs_path = Path(f'{args.dir_prefix}_in')
+    outputs_path = Path('{args.dir_prefix}_out')
 
     parameters = get_parameters(args.parameter_space)
 
