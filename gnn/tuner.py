@@ -31,7 +31,9 @@ def create_parser():
     from argparse import ArgumentParser
     parser = ArgumentParser('Net training and tuning with Condor and Ax')
 
-    parser.add_argument('parameter-space', type=Path)
+    parser.add_argument('--data', type=Path)
+    parser.add_argument('--parameter-space', type=Path)
+    parser.add_argument('--dir-prefix', type=str, default='ax')
     parser.add_argument('quiet', action='store_true')
 
     return parser
@@ -245,7 +247,7 @@ class CondorJobMetric(Metric):
 def get_parameters(parameters_json: Path):
 
     with parameters_json.open('rt') as in_handle:
-        if parameters_json.suffix.lower() in {'yml', 'yaml'}:
+        if parameters_json.suffix.lower() in {'.yml', '.yaml'}:
             parameters = yaml.safe_load(in_handle)
         else:
             parameters = json.load(in_handle)
@@ -265,10 +267,10 @@ def main(args):
     container_image_path = 'osdf:///chtc/staging/sverchkov/pyg1.sif'
     training_script_path = Path('train_nnc.py')
     model_path = Path('nets.py')
-    data_path = Path('data/cpg0016_v1.pt')
+    data_path = args.data
     logs_path = Path('ax.log')
-    inputs_path = Path('ax_in')
-    outputs_path = Path('ax_out')
+    inputs_path = Path(f'{args.dir_prefix}_in')
+    outputs_path = Path('{args.dir_prefix}_out')
 
     parameters = get_parameters(args.parameter_space)
 

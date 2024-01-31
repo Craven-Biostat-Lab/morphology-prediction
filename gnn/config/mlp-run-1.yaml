@@ -4,7 +4,7 @@
 - name: learning_rate
   type: range
   value_type: float
-  bounds: [1e-6, 1e-2]
+  bounds: [1.0e-6, 1.0e-2]
 - name: channel_width
   type: range
   value_type: int
@@ -19,10 +19,11 @@
   value_type: int
   value: 0
 - name: decoder_depth
-  type: range
+  type: fixed
   value_type: int
-  bounds: [1, 10]
+  value: 0
 - name: dropout_rate
   type: range
   value_type: float
   bounds: [0.0, 1.0]
+
