@@ -8,6 +8,20 @@ import torch
 from torch_geometric.data import Data
 from stringdb_alias import HGNCMapper
 
+
+__version__ = '4'
+
+
+def create_parser():
+    """Command line argument parser."""
+    from argparse import ArgumentParser
+    parser = ArgumentParser("Prepare data for Pytorch models")
+
+    parser.add_argument('--out', type=Path, default=Path(f'data/cpg0016_v{__version__}.pt'))
+
+    return parser
+
+
 def prep_edges(stringdb_txt):
 
     # Load the STRING graph:
@@ -180,9 +194,9 @@ def prep_data(stringdb_txt, mapfile_xlsx, gene_labels_csv, string_info_file, str
 
     return data
 
-def main():
+def main(args):
 
-    output_file = Path('data/cpg0016_v2_24.pt')
+    output_file = args.out
     assert not output_file.exists(), f"Won't overwrite existing {output_file}"
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +213,7 @@ def main():
     torch.save(data, output_file)
 
 if __name__ == "__main__":
-    # TODO: Make CLI arguments
 
-    main()
+    args = create_parser().parse_args()
+
+    main(args)
