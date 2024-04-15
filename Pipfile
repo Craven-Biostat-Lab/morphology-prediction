@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+dask = "*"
+fastparquet = "*"
+s3fs = "*"
+jinja2 = "*"
+scipy = "*"
+ipykernel = "*"
+pycytominer = {ref = "a5ae6c81a275b692ef5d4c85cfeb37696bf69242", git = "https://github.com/cytomining/pycytominer"}
+seaborn = "*"
+importlib-resources = "*"
+
+[dev-packages]
+ipykernel = "*"
+
+[requires]
+python_version = "3.10"
