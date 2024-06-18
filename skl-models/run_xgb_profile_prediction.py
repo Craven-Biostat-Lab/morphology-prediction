@@ -23,7 +23,8 @@ DEFAULT_CONFIG = {
     'subcellular_path': DEFAULT_FUNCTIONAL_DATA_PATH / 'subcellular-localization' / 'uniprot_reactome_hpa_merged.tsv',
     'go_path': DEFAULT_FUNCTIONAL_DATA_PATH / 'GO_Embeddings' / 'go_embedding_64.csv',
     'predictions_dir': Path('results'),
-    'predictions_version': '2024-06-11',
+    'predictions_version': '2024-06-18',
+    'task': 'fitting', # fitting or prediction
     'kfold_seed': 20240611,
     'kfold_splits': 10
 }
@@ -123,6 +124,15 @@ class MorphologyData():
 
 def main(config):
 
+    if config['task'] == 'prediction':
+        run_prediction(config)
+    elif config['task'] == 'fitting':
+        run_fitting(config)
+    else:
+        logger.error(f'Unrecognized task "{config["task"]}"!')
+
+def run_prediction(config):
+
     morphology_data = MorphologyData(**config)
 
     # Set up output targets
@@ -160,6 +170,35 @@ def main(config):
                     profile_component,
                     cv=well_splits
                 )
+        )
+        logger.info(f'Saving to {path}')
+        df.to_parquet(path)
+
+def run_fitting(config):
+
+    morphology_data = MorphologyData(**config)
+
+    # Set up output targets
+
+    predictions_paths = {
+        group: config['predictions_dir'] / f'Fit XGB {group} {config["predictions_version"]}.parquet'
+        for group in morphology_data.feature_column_groups.keys()
+    }
+
+    model = xgb.XGBRegressor(tree_method='hist')
+
+    # Run fitting
+    for group, path in predictions_paths.items():
+        logger.info(f'XGN fitting {group}')
+        df = morphology_data.well_features_and_profiles[morphology_data.profile_columns].apply(
+            lambda profile_component: (
+                model
+                .fit(
+                    morphology_data.well_features_and_profiles[morphology_data.feature_column_groups[group]],
+                    profile_component
+                )
+                .predict(morphology_data.well_features_and_profiles[morphology_data.feature_column_groups[group]])
+            )
         )
         logger.info(f'Saving to {path}')
         df.to_parquet(path)
