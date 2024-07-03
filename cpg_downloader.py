@@ -29,15 +29,17 @@ KNOWN_DATASETS = {
             "LUAD-BBBC041-Caicedo/CellPainting/"
             "replicate_level_cp_augmented.csv.gz"
         ),
-        'explicit dtypes': {'Metadata_NCBIGeneID': 'str'}
+        'add to metadata cols': ['Symbol']
     },
-    'cpg0003-U2OS': (
-        "s3://cellpainting-gallery/cpg0003-rosetta/"
-        "broad/workspace/preprocessed_data/"
-        "TA-ORF-BBBC037-Rohban/CellPainting/"
-        "replicate_level_cp_augmented.csv.gz"
-    ),
-    'cpg0016': None
+    'cpg0003-U2OS': {
+        'dataset uri': (
+            "s3://cellpainting-gallery/cpg0003-rosetta/"
+            "broad/workspace/preprocessed_data/"
+            "TA-ORF-BBBC037-Rohban/CellPainting/"
+            "replicate_level_cp_augmented.csv.gz"
+        )
+    },
+    #'cpg0016': None
 }
 
 
@@ -71,14 +73,29 @@ def main(config):
         columns.str.startswith('Cytoplasm_')
     ]
 
-    # Identify metadata columns
-    meta_cols = ['Metadata_Plate', 'Metadata_Well', 'Symbol', 'NCBIGeneID']
+    # Rename columns if needed
+    columns_to_add = config.get('add to metadata cols')
+    if columns_to_add:
+        profiles.rename({c: f'Metadata_{c}' for c in columns_to_add}, inplace=True)
+        columns = profiles.columns
 
-    # Enforce consistent metadata naming
+    # Identify metadata columns
+    meta_cols = columns[columns.str.startswith('Metadata_')]
 
     # Identify controls
 
     # Normalize
+    normalized_profiles = profiles.set_index(meta_cols).groupby('Metadata_Plate', group_keys=False).apply(
+        pycytominer.normalize,
+        # profiles is first positional argument
+        # features=list(feature_cols),
+        # image_features=True, # Include Image_### features
+        method="standardize",
+        samples="Metadata_pert_type == 'control'"
+    )
+
+    # Write normalized profiles to file
+    normalized_profiles.to_parquet(config['out_path'])
 
 
 if __name__ == '__main__':
