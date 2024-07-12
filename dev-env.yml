@@ -1,0 +1,17 @@
+name: dev-env
+channels:
+  - defaults
+dependencies:
+  - dask
+  - fastparquet
+  - ipykernel
+  - jinja2
+  - numpy
+  - pandas
+  - pycytominer
+  - python==3.11.9
+  - scikit-learn
+  - scipy
+  - seaborn
+  - s3fs
+prefix: /home/yuriy/miniconda3/envs/dev-env
