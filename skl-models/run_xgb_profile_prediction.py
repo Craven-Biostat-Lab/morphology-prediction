@@ -3,7 +3,9 @@
 from argparse import ArgumentParser
 import logging
 from pathlib import Path
+import datetime
 
+import yaml
 import pandas as pd
 import numpy as np
 
@@ -32,11 +34,42 @@ DEFAULT_CONFIG = {
 
 def create_parser() -> ArgumentParser:
 
-    parser = ArgumentParser('Profile prediction using XGB')
+    parser = ArgumentParser(description='Profile prediction using XGB')
 
-    parser.add_argument('--config', type=Path, required=False)
+    parser.add_argument(
+        '-p', '--profiles', type=Path, required=False,
+        help='Path to normalized CellProfiler profiles.'
+    )
+    parser.add_argument('-o', '--output', type=Path, required=False, help='Output folder path.')
+    parser.add_argument(
+        '-t', '--tag', type=str, default=datetime.date.today().isoformat(),
+        help='Version tag to use for output files.'
+    )
+    parser.add_argument(
+        '-c', '--config', type=Path, required=False,
+        help='Configuration (YAML) file. Values in the file will override settings set by command line arguments.'
+    )
+    parser.add_argument('-v', '--verbose', action='store_true')
 
     return parser
+
+
+def load_config(args):
+    config = {} | DEFAULT_CONFIG
+    config['log level'] = logging.DEBUG if args.verbose else logging.INFO
+    if args.profiles:
+        config['profiles_path'] = args.profiles
+    if args.output:
+        config['predictions_dir'] = args.output
+    config['predictions_version'] = args.tag
+
+    if args.config:
+        with args.config.open('rt') as instream:
+            config |= yaml.safe_load(instream)
+    
+    config['predictions_dir'] = Path(config['predictions_dir'])
+    
+    return config
 
 
 class MorphologyData():
@@ -48,11 +81,17 @@ class MorphologyData():
         undetected_path,
         subcellular_path,
         go_path,
+        metadata_perturbation_column='Metadata_Perturbation',
+        metadata_perturbation_trt_val='CRISPR-trt',
         **_
     ):
 
         # Load profiles
-        normalized_profiles = pd.read_parquet(profiles_path).set_index(['Metadata_Plate', 'Metadata_Well'])
+        normalized_profiles = (
+            pd.read_parquet(profiles_path)
+            .reset_index()
+            .set_index(['Metadata_Plate', 'Metadata_Well'])
+        )
 
         # Load feature sets
         ## Gene abundances
@@ -83,7 +122,9 @@ class MorphologyData():
         abundance_df = abundance_df.set_index('Gene')
 
         # Get the list of knockouts
-        knockouts = normalized_profiles[normalized_profiles['Metadata_Perturbation'] == 'CRISPR-trt']['Metadata_Symbol'].drop_duplicates()
+        knockouts = normalized_profiles[
+            normalized_profiles[metadata_perturbation_column] == metadata_perturbation_trt_val
+        ]['Metadata_Symbol'].drop_duplicates()
 
         ## Putting feature vectors together
         self.gene_features = (
@@ -206,7 +247,6 @@ def run_fitting(config):
 
 if __name__ == '__main__':
     parser = create_parser()
-    args = parser.parse_args()
-    # TODO: extract config from args
-    logging.basicConfig(level=logging.INFO)
-    main(DEFAULT_CONFIG)
+    config = load_config(parser.parse_args())
+    logging.basicConfig(level=config['log level'])
+    main(config)
