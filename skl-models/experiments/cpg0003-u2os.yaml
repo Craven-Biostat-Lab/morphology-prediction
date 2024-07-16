@@ -2,3 +2,4 @@ profiles_path: ../data/cpg0003/u2os/normalized-profiles_2024-07-12.parquet
 predictions_dir: results/cpg0003-u2os
 metadata_perturbation_column: Metadata_pert_type
 metadata_perturbation_trt_val: trt
+task: prediction

@@ -171,6 +171,9 @@ def main(config):
         run_fitting(config)
     else:
         logger.error(f'Unrecognized task "{config["task"]}"!')
+    
+    logger.info('Done')
+
 
 def run_prediction(config):
 
